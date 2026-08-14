@@ -42,19 +42,23 @@ async function ensureDependencies() {
   }
 }
 
-function isRunning() {
+function requestPet(pathname, method = "GET") {
   return new Promise((resolve) => {
-    const request = http.get({ hostname: "127.0.0.1", port, path: "/health", timeout: 500 }, (response) => {
+    const request = http.request({ hostname: "127.0.0.1", port, path: pathname, method, timeout: 500 }, (response) => {
       response.resume();
       resolve(response.statusCode === 200);
     });
     request.on("error", () => resolve(false));
     request.on("timeout", () => { request.destroy(); resolve(false); });
+    request.end();
   });
 }
 
 (async () => {
-  if (await isRunning()) process.exit(0);
+  if (await requestPet("/health")) {
+    await requestPet("/show", "POST");
+    process.exit(0);
+  }
   if (!(await ensureDependencies())) {
     console.error("BANMENG Codex Pet could not install its runtime dependencies.");
     process.exit(1);

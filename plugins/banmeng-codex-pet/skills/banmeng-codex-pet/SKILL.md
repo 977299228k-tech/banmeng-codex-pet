@@ -11,9 +11,9 @@ This plugin controls a local Electron desktop companion. It reads quota through 
 
 Run commands from this skill directory only after resolving the plugin root two levels above it.
 
-- Start: `node <plugin-root>/scripts/start-pet.cjs`
+- Start or reveal: `node <plugin-root>/scripts/start-pet.cjs`
 - Stop: `node <plugin-root>/scripts/stop-pet.cjs`
 - Refresh quota: send an HTTP POST to `http://127.0.0.1:47831/refresh`
 - Health check: send an HTTP GET to `http://127.0.0.1:47831/health`
 
-Report whether the local endpoint responded. Never request or expose account tokens. The app-server process uses the user's existing Codex authentication.
+Starting an already-running pet returns it to the primary display and reveals the window. Report whether the local endpoint responded. Never request or expose account tokens. The app-server process uses the user's existing Codex authentication.

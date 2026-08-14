@@ -193,6 +193,10 @@ function startLocalServer() {
       response.end(JSON.stringify({ ok: true }));
       return;
     }
+    if (request.method === "POST" && request.url === "/show") {
+      response.end(JSON.stringify({ ok: revealWindow(true), windowBounds: win?.getBounds() || null }));
+      return;
+    }
     if (request.method === "POST" && request.url === "/quit") {
       response.end(JSON.stringify({ ok: true }));
       setTimeout(() => app.quit(), 50);
@@ -204,9 +208,25 @@ function startLocalServer() {
   server.listen(PORT, "127.0.0.1");
 }
 
-function placeWindow() {
-  const area = screen.getPrimaryDisplay().workArea;
+function placeWindow(display = screen.getPrimaryDisplay()) {
+  const area = display.workArea;
   win.setPosition(area.x + area.width - WINDOW_WIDTH - 20, area.y + area.height - WINDOW_HEIGHT, false);
+}
+
+function revealWindow(reposition = false) {
+  if (!win || win.isDestroyed()) return false;
+  pauseMotion(8_000);
+  motion.nextDecisionAt = motion.pausedUntil + idleDelay();
+  if (reposition) placeWindow(screen.getDisplayNearestPoint(screen.getCursorScreenPoint()));
+  if (win.isMinimized()) win.restore();
+  win.setAlwaysOnTop(true, "floating");
+  win.show();
+  win.moveTop();
+  win.focus();
+  const reaction = { kind: "pet", text: "我在这里！" };
+  state.motion = { ...state.motion, lastInteraction: { ...reaction, at: Date.now() } };
+  win.webContents.send("pet:reaction", reaction);
+  return win.isVisible();
 }
 
 function startMotionLoop() {
@@ -227,10 +247,11 @@ function startMotionLoop() {
     const area = screen.getDisplayMatching(bounds).workArea;
     const minX = area.x;
     const maxX = area.x + area.width - bounds.width;
+    const safeY = clamp(bounds.y, area.y, area.y + area.height - bounds.height);
 
     if (motion.mode === "walking" && motion.targetX != null) {
       const step = advanceWalk({ x: bounds.x, targetX: motion.targetX, speed: motion.speed, deltaMs });
-      win.setPosition(Math.round(clamp(step.x, minX, maxX)), bounds.y, false);
+      win.setPosition(Math.round(clamp(step.x, minX, maxX)), Math.round(safeY), false);
       if (step.reached || step.x <= minX || step.x >= maxX) {
         motion.targetX = null;
         motion.nextDecisionAt = now + idleDelay();
@@ -281,7 +302,7 @@ function createWindow() {
   win.webContents.on("context-menu", () => {
     Menu.buildFromTemplate([
       { label: "刷新额度", click: () => client?.refresh() },
-      { label: "回到右下角", click: placeWindow },
+      { label: "回到右下角", click: () => placeWindow(screen.getDisplayMatching(win.getBounds())) },
       { type: "separator" },
       { label: "退出桌宠", click: () => app.quit() }
     ]).popup({ window: win });
@@ -333,7 +354,7 @@ ipcMain.on("pet:drag-end", () => {
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
-  app.on("second-instance", () => win?.showInactive());
+  app.on("second-instance", () => revealWindow(true));
   app.whenReady().then(() => {
     createWindow();
     startLocalServer();
