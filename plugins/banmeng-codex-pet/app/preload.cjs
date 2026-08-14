@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld("petApi", {
   getState: () => ipcRenderer.invoke("pet:get-state"),
   refreshUsage: () => ipcRenderer.invoke("pet:refresh-usage"),
   interact: (kind) => ipcRenderer.invoke("pet:interact", kind),
+  care: (action) => ipcRenderer.invoke("pet:care", action),
   beginDrag: (point) => ipcRenderer.send("pet:drag-start", point),
   dragMove: (point) => ipcRenderer.send("pet:drag-move", point),
   endDrag: () => ipcRenderer.send("pet:drag-end"),

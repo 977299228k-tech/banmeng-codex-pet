@@ -7,6 +7,12 @@ const quotaRing = document.getElementById("quotaRing");
 const quotaValue = document.getElementById("quotaValue");
 const resetTime = document.getElementById("resetTime");
 const usageSummary = document.getElementById("usageSummary");
+const feedButton = document.getElementById("feedButton");
+const playButton = document.getElementById("playButton");
+const satietyValue = document.getElementById("satietyValue");
+const moodValue = document.getElementById("moodValue");
+const satietyFill = document.getElementById("satietyFill");
+const moodFill = document.getElementById("moodFill");
 const characterWrap = document.getElementById("characterWrap");
 const characterFlip = document.getElementById("characterFlip");
 const reactionBubble = document.getElementById("reactionBubble");
@@ -50,9 +56,12 @@ function render(state) {
   const task = state.task || {};
   const quota = state.quota || {};
   const summary = state.usage?.summary || {};
+  const life = state.life || {};
   shell.dataset.mode = task.mode || "idle";
+  shell.dataset.mood = life.key || "calm";
+  shell.dataset.lifeActivity = life.activity || "idle";
   applyMotion(state.motion);
-  statusKicker.textContent = `CODEX · ${(task.mode || "idle").toUpperCase()}`;
+  statusKicker.textContent = `CODEX · ${(task.mode || "idle").toUpperCase()} · ${life.label || "平静"}`;
   statusTitle.textContent = task.title || "待命中";
   statusDetail.textContent = task.detail || "随时可以开始";
   taskMeta.textContent = elapsed(task);
@@ -68,6 +77,17 @@ function render(state) {
   }
   const plan = state.account?.planType || quota.planType || "ChatGPT";
   usageSummary.textContent = summary.lifetimeTokens ? `${plan} · ${compactNumber(summary.lifetimeTokens)} tokens` : plan;
+
+  const satiety = Math.round(Number(life.satiety) || 0);
+  const mood = Math.round(Number(life.mood) || 0);
+  satietyValue.textContent = satiety;
+  moodValue.textContent = mood;
+  satietyFill.style.width = `${satiety}%`;
+  moodFill.style.width = `${mood}%`;
+  feedButton.dataset.level = satiety < 25 ? "low" : satiety < 55 ? "mid" : "good";
+  playButton.dataset.level = mood < 25 ? "low" : mood < 55 ? "mid" : "good";
+  feedButton.title = `饱食度 ${satiety}/100，点击喂食`;
+  playButton.title = `心情值 ${mood}/100，点击陪玩`;
 }
 
 function showReaction({ kind = "pet", text = "嗯？" } = {}) {
@@ -77,10 +97,11 @@ function showReaction({ kind = "pet", text = "嗯？" } = {}) {
   reactionBubble.textContent = text;
   reactionBubble.classList.add("is-visible");
   shell.dataset.reaction = kind;
+  const durations = { double: 1900, eat: 2600, play: 2800, sleep: 4200, attention: 3400, explore: 2800, stretch: 2400 };
   reactionTimer = setTimeout(() => {
     reactionBubble.classList.remove("is-visible");
     shell.dataset.reaction = "";
-  }, kind === "double" ? 1900 : 1400);
+  }, durations[kind] || 1400);
 }
 
 function screenPoint(event) {
@@ -91,7 +112,15 @@ async function react(kind) {
   showReaction(await window.petApi.interact(kind));
 }
 
+async function care(action) {
+  const result = await window.petApi.care(action);
+  if (result?.life && latestState) render({ ...latestState, life: result.life });
+  showReaction(result);
+}
+
 quotaRing.addEventListener("click", () => window.petApi.refreshUsage());
+feedButton.addEventListener("click", () => care("feed"));
+playButton.addEventListener("click", () => care("play"));
 characterWrap.addEventListener("pointerenter", () => window.petApi.setHovered(true));
 characterWrap.addEventListener("pointerleave", () => {
   if (!pointerStart) window.petApi.setHovered(false);

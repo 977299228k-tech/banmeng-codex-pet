@@ -1,25 +1,39 @@
 const { app, BrowserWindow, Menu, ipcMain, screen } = require("electron");
+const fs = require("node:fs");
 const path = require("node:path");
 const http = require("node:http");
 const { CodexClient } = require("./codex-client.cjs");
+const {
+  advanceLife,
+  applyCareAction,
+  applyInteraction,
+  applyWorkEvent,
+  chooseAutonomousAction,
+  normalizeLife,
+  performAutonomousAction
+} = require("./life.cjs");
 const { advanceWalk, clamp, createWalkDecision, idleDelay } = require("./motion.cjs");
 const { mapHookEvent } = require("./state.cjs");
 const packageInfo = require("../package.json");
 
 const PORT = 47831;
 const WINDOW_WIDTH = 340;
-const WINDOW_HEIGHT = 500;
+const WINDOW_HEIGHT = 555;
 let win;
 let server;
 let client;
 let motionTimer;
+let lifeTimer;
 let idleTimer;
+let lifeStatePath;
+let nextAutonomyAt = Date.now() + 15_000;
 let state = {
   task: { mode: "idle", title: "待命中", detail: "随时可以开始", toolCount: 0, startedAt: null, updatedAt: Date.now() },
   quota: { connected: false },
   usage: null,
   account: null,
-  motion: { mode: "idle", direction: "left", hovered: false, dragging: false }
+  motion: { mode: "idle", direction: "left", hovered: false, dragging: false },
+  life: normalizeLife()
 };
 
 const motion = {
@@ -67,9 +81,74 @@ function pauseMotion(duration = 900) {
   setMotionMode("paused");
 }
 
+function emitReaction(reaction) {
+  if (!reaction || !win || win.isDestroyed()) return;
+  state.motion = { ...state.motion, lastInteraction: { ...reaction, at: Date.now() } };
+  win.webContents.send("pet:reaction", reaction);
+}
+
+function loadLifeState() {
+  const directory = path.join(app.getPath("appData"), "BANMENG Codex Pet");
+  lifeStatePath = path.join(directory, "life-state.json");
+  try {
+    fs.mkdirSync(directory, { recursive: true });
+    const saved = JSON.parse(fs.readFileSync(lifeStatePath, "utf8"));
+    state.life = advanceLife(saved, Date.now());
+  } catch {
+    state.life = normalizeLife({}, Date.now());
+  }
+}
+
+function saveLifeState() {
+  if (!lifeStatePath || !state.life) return;
+  try {
+    fs.writeFileSync(lifeStatePath, JSON.stringify(state.life, null, 2), "utf8");
+  } catch {}
+}
+
+function performCare(action) {
+  const now = Date.now();
+  const result = applyCareAction(state.life, action, now);
+  state.life = result.life;
+  nextAutonomyAt = now + 35_000;
+  pauseMotion(Math.max(1_600, state.life.activityUntil - now));
+  emitReaction(result.reaction);
+  saveLifeState();
+  broadcast();
+  return { ok: true, ...result.reaction, life: state.life };
+}
+
+function startLifeLoop() {
+  clearInterval(lifeTimer);
+  nextAutonomyAt = Date.now() + 12_000 + Math.floor(Math.random() * 10_000);
+  lifeTimer = setInterval(() => {
+    const now = Date.now();
+    state.life = advanceLife(state.life, now, { working: state.task.mode !== "idle" });
+    if (state.task.mode === "idle" && !motion.hovered && !motion.dragging && now >= nextAutonomyAt) {
+      const action = chooseAutonomousAction(state.life);
+      const result = performAutonomousAction(state.life, action, now);
+      state.life = result.life;
+      if (result.reaction) {
+        if (action === "explore") {
+          motion.pausedUntil = now + 900;
+          motion.nextDecisionAt = now + 900;
+          setMotionMode("idle");
+        } else {
+          pauseMotion(result.duration);
+        }
+        emitReaction(result.reaction);
+      }
+      nextAutonomyAt = now + 22_000 + Math.floor(Math.random() * 24_000);
+      saveLifeState();
+    }
+    broadcast();
+  }, 5_000);
+}
+
 function applyTaskEvent(payload) {
   const next = mapHookEvent(payload);
   const previous = state.task;
+  state.life = applyWorkEvent(state.life, payload.hook_event_name, Date.now());
   state.task = {
     ...previous,
     ...next,
@@ -85,6 +164,7 @@ function applyTaskEvent(payload) {
       broadcast();
     }, 12_000);
   }
+  saveLifeState();
   broadcast();
 }
 
@@ -108,7 +188,11 @@ function triggerInteraction(kind = "pet") {
     : ["嗯？我在这里。", "摸摸收到。", "要开始新任务吗？", "休息一下也很好。"];
   const text = phrases[Math.floor(Math.random() * phrases.length)];
   pauseMotion(kind === "double" ? 1800 : 1100);
+  state.life = applyInteraction(state.life, kind, Date.now());
+  nextAutonomyAt = Date.now() + 30_000;
   state.motion = { ...state.motion, lastInteraction: { kind, text, at: Date.now() } };
+  saveLifeState();
+  broadcast();
   return { kind, text };
 }
 
@@ -182,6 +266,15 @@ function startLocalServer() {
         const result = triggerInteraction((await readBody(request)).kind);
         win?.webContents.send("pet:reaction", result);
         response.end(JSON.stringify({ ok: true, ...result }));
+      } catch (error) {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ ok: false, error: error.message }));
+      }
+      return;
+    }
+    if (request.method === "POST" && request.url === "/care") {
+      try {
+        response.end(JSON.stringify(performCare((await readBody(request)).action)));
       } catch (error) {
         response.statusCode = 400;
         response.end(JSON.stringify({ ok: false, error: error.message }));
@@ -316,6 +409,7 @@ function validPoint(point) {
 ipcMain.handle("pet:get-state", () => state);
 ipcMain.handle("pet:refresh-usage", () => { client?.refresh(); return true; });
 ipcMain.handle("pet:interact", (_event, kind) => triggerInteraction(kind));
+ipcMain.handle("pet:care", (_event, action) => performCare(action));
 ipcMain.on("pet:hover", (_event, hovered) => {
   motion.hovered = Boolean(hovered);
   if (motion.hovered) pauseMotion(300);
@@ -356,11 +450,13 @@ if (!app.requestSingleInstanceLock()) {
 } else {
   app.on("second-instance", () => revealWindow(true));
   app.whenReady().then(() => {
+    loadLifeState();
     createWindow();
     startLocalServer();
+    startLifeLoop();
     client = new CodexClient();
     client.on("state", (value) => {
-      state = { ...state, ...value, motion: state.motion };
+      state = { ...state, ...value, motion: state.motion, life: state.life };
       broadcast();
     });
     client.on("offline", () => {
@@ -373,7 +469,9 @@ if (!app.requestSingleInstanceLock()) {
 
 app.on("before-quit", () => {
   clearInterval(motionTimer);
+  clearInterval(lifeTimer);
   clearTimeout(idleTimer);
+  saveLifeState();
   server?.close();
   client?.stop();
 });

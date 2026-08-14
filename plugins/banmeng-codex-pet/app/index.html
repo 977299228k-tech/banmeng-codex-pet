@@ -23,6 +23,20 @@
           <span id="resetTime">正在连接额度</span>
           <span id="usageSummary">ChatGPT</span>
         </div>
+        <div class="life-strip" aria-label="桌宠状态">
+          <button class="life-stat life-stat-satiety" id="feedButton" type="button" title="点击喂食">
+            <span class="life-name">饱食</span>
+            <strong id="satietyValue">--</strong>
+            <span class="life-action">喂食</span>
+            <span class="life-track" aria-hidden="true"><i id="satietyFill"></i></span>
+          </button>
+          <button class="life-stat life-stat-mood" id="playButton" type="button" title="点击陪玩">
+            <span class="life-name">心情</span>
+            <strong id="moodValue">--</strong>
+            <span class="life-action">陪玩</span>
+            <span class="life-track" aria-hidden="true"><i id="moodFill"></i></span>
+          </button>
+        </div>
       </section>
       <div class="character-wrap" id="characterWrap" role="button" aria-label="Codex 桌宠">
         <div class="reaction-bubble" id="reactionBubble" role="status"></div>

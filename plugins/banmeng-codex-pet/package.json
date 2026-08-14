@@ -1,13 +1,13 @@
 {
   "name": "banmeng-codex-pet",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "private": true,
   "description": "A white-haired Codex desktop companion with live quota and task status.",
   "main": "app/main.cjs",
   "scripts": {
     "start": "node scripts/start-pet.cjs",
     "test": "node --test tests/*.test.cjs",
-    "check": "node --check app/main.cjs && node --check app/motion.cjs && node --check app/codex-client.cjs && node --check app/preload.cjs && node --check app/renderer.js && node --check scripts/start-pet.cjs && node --check scripts/notify.cjs"
+    "check": "node --check app/main.cjs && node --check app/motion.cjs && node --check app/life.cjs && node --check app/codex-client.cjs && node --check app/preload.cjs && node --check app/renderer.js && node --check scripts/start-pet.cjs && node --check scripts/notify.cjs"
   },
   "engines": {
     "node": ">=20"

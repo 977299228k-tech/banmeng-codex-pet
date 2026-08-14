@@ -1,6 +1,6 @@
 # BANMENG Codex Pet
 
-一个面向 Windows Codex 用户的白发二次元桌宠。它会显示真实剩余额度、重置时间与当前任务阶段，并根据 Codex Hooks 切换待命、工作、等待确认和完成动作。空闲时她会在显示器内自主漫步，也可以拖动、摸摸或双击互动。
+一个面向 Windows Codex 用户的白发二次元桌宠。它会显示真实剩余额度、重置时间与当前任务阶段，并根据 Codex Hooks 切换待命、工作、等待确认和完成动作。她拥有持久化的饱食、心情、精力与亲密度，会自主找零食、休息、探索和求陪伴，也可以拖动、喂食、陪玩或摸摸。
 
 ![BANMENG Codex Pet preview](plugins/banmeng-codex-pet/tests/browser-snapshot.png)
 
