@@ -1,6 +1,6 @@
 {
   "name": "banmeng-codex-pet",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "private": true,
   "description": "A white-haired Codex desktop companion with live quota and task status.",
   "main": "app/main.cjs",

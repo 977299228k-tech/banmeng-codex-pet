@@ -87,7 +87,7 @@ class CodexClient extends EventEmitter {
       method: "initialize",
       id: 0,
       params: {
-        clientInfo: { name: "banmeng_codex_pet", title: "BANMENG Codex Pet", version: "0.2.0" },
+        clientInfo: { name: "banmeng_codex_pet", title: "BANMENG Codex Pet", version: "0.2.1" },
         capabilities: { experimentalApi: true }
       }
     });

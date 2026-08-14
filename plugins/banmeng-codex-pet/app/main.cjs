@@ -254,6 +254,7 @@ function createWindow() {
   win = new BrowserWindow({
     width: WINDOW_WIDTH,
     height: WINDOW_HEIGHT,
+    show: false,
     transparent: true,
     frame: false,
     resizable: false,
@@ -270,13 +271,13 @@ function createWindow() {
   });
   win.setAlwaysOnTop(true, "floating");
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-  win.loadFile(path.join(__dirname, "index.html"));
   win.once("ready-to-show", () => {
     placeWindow();
     win.showInactive();
     publishMotion(true);
     startMotionLoop();
   });
+  win.loadFile(path.join(__dirname, "index.html"));
   win.webContents.on("context-menu", () => {
     Menu.buildFromTemplate([
       { label: "刷新额度", click: () => client?.refresh() },
