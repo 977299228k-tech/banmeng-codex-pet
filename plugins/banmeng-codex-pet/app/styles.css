@@ -37,7 +37,7 @@ button { font: inherit; }
   box-shadow: 0 16px 42px rgba(35, 54, 88, 0.18), inset 0 0 0 1px var(--line);
   backdrop-filter: blur(18px) saturate(125%);
   -webkit-backdrop-filter: blur(18px) saturate(125%);
-  -webkit-app-region: drag;
+  -webkit-app-region: no-drag;
 }
 
 .status-copy { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -76,18 +76,36 @@ button { font: inherit; }
   justify-self: center;
   display: grid;
   place-items: end center;
-  -webkit-app-region: drag;
+  cursor: grab;
+  touch-action: none;
+  -webkit-app-region: no-drag;
 }
+.character-wrap:active { cursor: grabbing; }
 
-.character {
+.character-flip {
+  --face: 1;
+  --look-x: 0px;
+  --look-angle: 0deg;
   position: relative;
   z-index: 2;
+  width: 300px;
+  height: 356px;
+  display: grid;
+  place-items: end center;
+  transform: translateX(var(--look-x)) rotate(var(--look-angle)) scaleX(var(--face));
+  transform-origin: 50% 92%;
+  transition: transform 150ms ease-out;
+}
+.pet-shell[data-facing="right"] .character-flip { --face: -1; }
+
+.character {
   width: auto;
   height: 356px;
   object-fit: contain;
   transform-origin: 50% 92%;
   filter: drop-shadow(0 12px 11px rgba(46, 55, 77, 0.18));
   animation: idle-breathe 3.8s ease-in-out infinite;
+  pointer-events: none;
 }
 
 .ground-shadow {
@@ -100,12 +118,53 @@ button { font: inherit; }
   background: rgba(35, 48, 73, 0.18);
   filter: blur(6px);
   animation: shadow-breathe 3.8s ease-in-out infinite;
+  pointer-events: none;
 }
 
-.activity-mark { position: absolute; z-index: 3; top: 58px; right: 19px; display: none; gap: 4px; padding: 7px 8px; border-radius: 8px; background: rgba(255,255,255,.93); box-shadow: 0 8px 20px rgba(40,60,95,.14); }
+.reaction-bubble {
+  position: absolute;
+  z-index: 6;
+  top: 34px;
+  left: 3px;
+  max-width: 158px;
+  padding: 8px 10px;
+  border: 1px solid rgba(91, 109, 145, 0.17);
+  border-radius: 8px;
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 8px 24px rgba(35, 54, 88, 0.16);
+  font-size: 12px;
+  line-height: 1.45;
+  opacity: 0;
+  transform: translateY(6px) scale(0.96);
+  transform-origin: 75% 100%;
+  transition: opacity 160ms ease, transform 160ms ease;
+  pointer-events: none;
+}
+.reaction-bubble::after {
+  content: "";
+  position: absolute;
+  right: 18px;
+  bottom: -5px;
+  width: 10px;
+  height: 10px;
+  background: inherit;
+  transform: rotate(45deg);
+}
+.reaction-bubble.is-visible { opacity: 1; transform: translateY(0) scale(1); }
+
+.activity-mark { position: absolute; z-index: 5; top: 58px; right: 19px; display: none; gap: 4px; padding: 7px 8px; border-radius: 8px; background: rgba(255,255,255,.93); box-shadow: 0 8px 20px rgba(40,60,95,.14); }
 .activity-mark i { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); animation: dot 1s ease-in-out infinite; }
 .activity-mark i:nth-child(2) { animation-delay: .15s; }
 .activity-mark i:nth-child(3) { animation-delay: .3s; }
+
+.heart-burst { position: absolute; z-index: 7; top: 122px; left: 50%; width: 1px; height: 1px; pointer-events: none; }
+.heart-burst i { position: absolute; display: none; width: 12px; height: 12px; background: #ef6686; transform: rotate(45deg); }
+.heart-burst i::before, .heart-burst i::after { content: ""; position: absolute; width: 12px; height: 12px; border-radius: 50%; background: inherit; }
+.heart-burst i::before { left: -6px; }
+.heart-burst i::after { top: -6px; }
+.heart-burst i:nth-child(2) { background: #5a8ff7; }
+.heart-burst i:nth-child(3) { background: #f0a84e; }
 
 .pet-shell[data-mode="running"] .activity-mark,
 .pet-shell[data-mode="tool"] .activity-mark,
@@ -118,7 +177,13 @@ button { font: inherit; }
 .pet-shell[data-mode="attention"] { --accent: #c65a2a; --accent-soft: #ffe4d6; }
 .pet-shell[data-mode="success"] .character { animation: success-jump .72s cubic-bezier(.2,.75,.22,1.2) 2; }
 .pet-shell[data-mode="success"] { --accent: #1f8b64; --accent-soft: #d9f4e9; }
-.pet-shell[data-facing="right"] .character { transform: scaleX(-1); }
+.pet-shell[data-mode="idle"][data-motion="walking"] .character { animation: walk-bob .48s ease-in-out infinite; }
+.pet-shell[data-dragging="true"] .character { animation: drag-float .7s ease-in-out infinite alternate; }
+.pet-shell[data-reaction="pet"] .character { animation: happy-nod .55s ease-in-out 2; }
+.pet-shell[data-reaction="double"] .character { animation: success-jump .68s cubic-bezier(.2,.75,.22,1.2) 2; }
+.pet-shell[data-reaction="double"] .heart-burst i { display: block; animation: heart-pop 1s ease-out forwards; }
+.pet-shell[data-reaction="double"] .heart-burst i:nth-child(2) { animation-delay: .08s; }
+.pet-shell[data-reaction="double"] .heart-burst i:nth-child(3) { animation-delay: .16s; }
 
 @keyframes idle-breathe { 0%,100% { transform: translateY(0) rotate(-.3deg); } 50% { transform: translateY(-5px) rotate(.3deg); } }
 @keyframes shadow-breathe { 0%,100% { transform: scaleX(1); opacity: .68; } 50% { transform: scaleX(.86); opacity: .48; } }
@@ -127,10 +192,17 @@ button { font: inherit; }
 @keyframes thinking-sway { 0%,100% { transform: rotate(-1.4deg); } 50% { transform: rotate(1.4deg) translateY(-3px); } }
 @keyframes attention { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
 @keyframes success-jump { 0%,100% { transform: translateY(0) scale(1); } 45% { transform: translateY(-20px) scale(1.02); } 70% { transform: translateY(2px) scale(.99); } }
+@keyframes walk-bob { 0%,100% { transform: translateY(0) rotate(-.6deg); } 50% { transform: translateY(-7px) rotate(.6deg); } }
+@keyframes drag-float { from { transform: translateY(-3px) rotate(-1deg); } to { transform: translateY(-10px) rotate(1deg); } }
+@keyframes happy-nod { 0%,100% { transform: translateY(0) rotate(0); } 45% { transform: translateY(5px) rotate(-1.2deg); } }
+@keyframes heart-pop { 0% { opacity: 0; transform: translate(0, 0) rotate(45deg) scale(.4); } 35% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--heart-x, -32px), -82px) rotate(45deg) scale(1); } }
+.heart-burst i:nth-child(2) { --heart-x: 8px; }
+.heart-burst i:nth-child(3) { --heart-x: 42px; }
 @keyframes dot { 0%,100% { opacity: .35; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-3px); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .character, .ground-shadow, .activity-mark i { animation: none !important; }
+  .character, .ground-shadow, .activity-mark i, .heart-burst i { animation: none !important; }
+  .character-flip, .reaction-bubble { transition: none; }
 }
 
 @media (prefers-reduced-transparency: reduce) {

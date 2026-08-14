@@ -12,6 +12,7 @@ test("maps tool activity to a visible task state", () => {
 test("maps permission requests to attention", () => {
   const result = mapHookEvent({ hook_event_name: "PermissionRequest", tool_name: "Bash" });
   assert.equal(result.mode, "attention");
+  assert.equal(result.title, "需要你的确认");
 });
 
 test("computes remaining quota from the Codex bucket", () => {

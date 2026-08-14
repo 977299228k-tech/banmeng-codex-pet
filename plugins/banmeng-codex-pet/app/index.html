@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
-    <main class="pet-shell" id="petShell" data-mode="idle" data-facing="left">
+    <main class="pet-shell" id="petShell" data-mode="idle" data-motion="idle" data-facing="left">
       <section class="status-panel" aria-live="polite">
         <div class="status-copy">
           <span class="status-kicker" id="statusKicker">CODEX · READY</span>
@@ -24,9 +24,13 @@
           <span id="usageSummary">ChatGPT</span>
         </div>
       </section>
-      <div class="character-wrap">
+      <div class="character-wrap" id="characterWrap" role="button" aria-label="Codex 桌宠">
+        <div class="reaction-bubble" id="reactionBubble" role="status"></div>
         <div class="activity-mark" aria-hidden="true"><i></i><i></i><i></i></div>
-        <img class="character" src="../assets/codex-pet.png" alt="白发 Codex 桌宠" draggable="false" />
+        <div class="heart-burst" aria-hidden="true"><i></i><i></i><i></i></div>
+        <div class="character-flip" id="characterFlip">
+          <img class="character" src="../assets/codex-pet.png" alt="白发 Codex 桌宠" draggable="false" />
+        </div>
         <div class="ground-shadow" aria-hidden="true"></div>
       </div>
     </main>

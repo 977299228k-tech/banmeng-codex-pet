@@ -2,23 +2,69 @@ const { app, BrowserWindow, Menu, ipcMain, screen } = require("electron");
 const path = require("node:path");
 const http = require("node:http");
 const { CodexClient } = require("./codex-client.cjs");
+const { advanceWalk, clamp, createWalkDecision, idleDelay } = require("./motion.cjs");
 const { mapHookEvent } = require("./state.cjs");
+const packageInfo = require("../package.json");
 
 const PORT = 47831;
+const WINDOW_WIDTH = 340;
+const WINDOW_HEIGHT = 500;
 let win;
 let server;
 let client;
-let walkTimer;
+let motionTimer;
 let idleTimer;
 let state = {
   task: { mode: "idle", title: "待命中", detail: "随时可以开始", toolCount: 0, startedAt: null, updatedAt: Date.now() },
   quota: { connected: false },
   usage: null,
-  account: null
+  account: null,
+  motion: { mode: "idle", direction: "left", hovered: false, dragging: false }
+};
+
+const motion = {
+  mode: "idle",
+  direction: "left",
+  targetX: null,
+  speed: 0,
+  nextDecisionAt: Date.now() + 2200,
+  lastTick: Date.now(),
+  hovered: false,
+  dragging: false,
+  pausedUntil: 0,
+  dragOffset: null
 };
 
 function broadcast() {
   if (win && !win.isDestroyed()) win.webContents.send("pet:state", state);
+}
+
+function publishMotion(force = false) {
+  const next = {
+    mode: motion.mode,
+    direction: motion.direction,
+    hovered: motion.hovered,
+    dragging: motion.dragging
+  };
+  const changed = force || Object.keys(next).some((key) => state.motion?.[key] !== next[key]);
+  if (!changed) return;
+  state.motion = { ...state.motion, ...next, updatedAt: Date.now() };
+  if (win && !win.isDestroyed()) {
+    win.webContents.send("pet:motion", state.motion);
+    win.webContents.send("pet:facing", motion.direction);
+  }
+}
+
+function setMotionMode(mode, direction = motion.direction) {
+  motion.mode = mode;
+  motion.direction = direction;
+  publishMotion();
+}
+
+function pauseMotion(duration = 900) {
+  motion.pausedUntil = Math.max(motion.pausedUntil, Date.now() + duration);
+  motion.targetX = null;
+  setMotionMode("paused");
 }
 
 function applyTaskEvent(payload) {
@@ -56,11 +102,21 @@ function readBody(request) {
   });
 }
 
+function triggerInteraction(kind = "pet") {
+  const phrases = kind === "double"
+    ? ["呀，被发现啦！", "今天也一起加油吧！", "跳一下，灵感就来了！"]
+    : ["嗯？我在这里。", "摸摸收到。", "要开始新任务吗？", "休息一下也很好。"];
+  const text = phrases[Math.floor(Math.random() * phrases.length)];
+  pauseMotion(kind === "double" ? 1800 : 1100);
+  state.motion = { ...state.motion, lastInteraction: { kind, text, at: Date.now() } };
+  return { kind, text };
+}
+
 function startLocalServer() {
   server = http.createServer(async (request, response) => {
     response.setHeader("Content-Type", "application/json; charset=utf-8");
     if (request.method === "GET" && request.url === "/health") {
-      response.end(JSON.stringify({ ok: true, version: app.getVersion() }));
+      response.end(JSON.stringify({ ok: true, version: packageInfo.version }));
       return;
     }
     if (request.method === "GET" && request.url === "/state") {
@@ -79,6 +135,11 @@ function startLocalServer() {
       return;
     }
     if (request.method === "GET" && request.url === "/diagnostics") {
+      if (!win || win.isDestroyed()) {
+        response.statusCode = 503;
+        response.end(JSON.stringify({ ok: false, error: "Pet window is unavailable" }));
+        return;
+      }
       const diagnostics = await win.webContents.executeJavaScript(`(() => {
         const rect = (selector) => {
           const element = document.querySelector(selector);
@@ -86,6 +147,7 @@ function startLocalServer() {
           return bounds ? { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height } : null;
         };
         const image = document.querySelector('.character');
+        const shell = document.querySelector('.pet-shell');
         return {
           readyState: document.readyState,
           text: document.body.innerText,
@@ -93,16 +155,33 @@ function startLocalServer() {
           panel: rect('.status-panel'),
           characterWrap: rect('.character-wrap'),
           character: rect('.character'),
+          reaction: rect('.reaction-bubble'),
+          dataset: { ...shell?.dataset },
           image: { complete: image?.complete, naturalWidth: image?.naturalWidth, naturalHeight: image?.naturalHeight, src: image?.currentSrc }
         };
       })()`, true);
-      response.end(JSON.stringify(diagnostics));
+      response.end(JSON.stringify({
+        ...diagnostics,
+        windowBounds: win.getBounds(),
+        motion: { ...state.motion, targetX: motion.targetX, speed: motion.speed }
+      }));
       return;
     }
     if (request.method === "POST" && request.url === "/event") {
       try {
         applyTaskEvent(await readBody(request));
         response.end(JSON.stringify({ ok: true }));
+      } catch (error) {
+        response.statusCode = 400;
+        response.end(JSON.stringify({ ok: false, error: error.message }));
+      }
+      return;
+    }
+    if (request.method === "POST" && request.url === "/interact") {
+      try {
+        const result = triggerInteraction((await readBody(request)).kind);
+        win?.webContents.send("pet:reaction", result);
+        response.end(JSON.stringify({ ok: true, ...result }));
       } catch (error) {
         response.statusCode = 400;
         response.end(JSON.stringify({ ok: false, error: error.message }));
@@ -127,27 +206,54 @@ function startLocalServer() {
 
 function placeWindow() {
   const area = screen.getPrimaryDisplay().workArea;
-  win.setPosition(area.x + area.width - 360, area.y + area.height - 530, false);
+  win.setPosition(area.x + area.width - WINDOW_WIDTH - 20, area.y + area.height - WINDOW_HEIGHT, false);
 }
 
-function startWalking() {
-  clearInterval(walkTimer);
-  let direction = -1;
-  walkTimer = setInterval(() => {
-    if (!win || win.isDestroyed() || state.task.mode === "attention") return;
-    const area = screen.getDisplayMatching(win.getBounds()).workArea;
-    const [x, y] = win.getPosition();
-    const target = Math.max(area.x, Math.min(area.x + area.width - 340, x + direction * 34));
-    win.webContents.send("pet:facing", direction > 0 ? "right" : "left");
-    win.setPosition(target, y, true);
-    direction *= -1;
-  }, 24_000);
+function startMotionLoop() {
+  clearInterval(motionTimer);
+  motion.lastTick = Date.now();
+  motionTimer = setInterval(() => {
+    if (!win || win.isDestroyed()) return;
+    const now = Date.now();
+    const deltaMs = now - motion.lastTick;
+    motion.lastTick = now;
+
+    if (state.task.mode !== "idle" || motion.hovered || motion.dragging || now < motion.pausedUntil) {
+      if (!motion.dragging) setMotionMode("paused");
+      return;
+    }
+
+    const bounds = win.getBounds();
+    const area = screen.getDisplayMatching(bounds).workArea;
+    const minX = area.x;
+    const maxX = area.x + area.width - bounds.width;
+
+    if (motion.mode === "walking" && motion.targetX != null) {
+      const step = advanceWalk({ x: bounds.x, targetX: motion.targetX, speed: motion.speed, deltaMs });
+      win.setPosition(Math.round(clamp(step.x, minX, maxX)), bounds.y, false);
+      if (step.reached || step.x <= minX || step.x >= maxX) {
+        motion.targetX = null;
+        motion.nextDecisionAt = now + idleDelay();
+        setMotionMode("idle");
+      }
+      return;
+    }
+
+    if (now >= motion.nextDecisionAt) {
+      const decision = createWalkDecision({ x: bounds.x, minX, maxX });
+      motion.targetX = decision.targetX;
+      motion.speed = decision.speed;
+      setMotionMode("walking", decision.direction);
+    } else if (motion.mode !== "idle") {
+      setMotionMode("idle");
+    }
+  }, 50);
 }
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 340,
-    height: 500,
+    width: WINDOW_WIDTH,
+    height: WINDOW_HEIGHT,
     transparent: true,
     frame: false,
     resizable: false,
@@ -165,7 +271,12 @@ function createWindow() {
   win.setAlwaysOnTop(true, "floating");
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   win.loadFile(path.join(__dirname, "index.html"));
-  win.once("ready-to-show", () => { placeWindow(); win.showInactive(); });
+  win.once("ready-to-show", () => {
+    placeWindow();
+    win.showInactive();
+    publishMotion(true);
+    startMotionLoop();
+  });
   win.webContents.on("context-menu", () => {
     Menu.buildFromTemplate([
       { label: "刷新额度", click: () => client?.refresh() },
@@ -174,8 +285,49 @@ function createWindow() {
       { label: "退出桌宠", click: () => app.quit() }
     ]).popup({ window: win });
   });
-  startWalking();
 }
+
+function validPoint(point) {
+  return Number.isFinite(point?.screenX) && Number.isFinite(point?.screenY);
+}
+
+ipcMain.handle("pet:get-state", () => state);
+ipcMain.handle("pet:refresh-usage", () => { client?.refresh(); return true; });
+ipcMain.handle("pet:interact", (_event, kind) => triggerInteraction(kind));
+ipcMain.on("pet:hover", (_event, hovered) => {
+  motion.hovered = Boolean(hovered);
+  if (motion.hovered) pauseMotion(300);
+  else {
+    motion.pausedUntil = Date.now() + 650;
+    motion.nextDecisionAt = motion.pausedUntil + idleDelay();
+    setMotionMode("idle");
+  }
+  publishMotion();
+});
+ipcMain.on("pet:drag-start", (_event, point) => {
+  if (!validPoint(point) || !win || win.isDestroyed()) return;
+  const [x, y] = win.getPosition();
+  motion.dragOffset = { x: point.screenX - x, y: point.screenY - y };
+  motion.dragging = true;
+  motion.targetX = null;
+  setMotionMode("dragging");
+});
+ipcMain.on("pet:drag-move", (_event, point) => {
+  if (!motion.dragging || !motion.dragOffset || !validPoint(point) || !win || win.isDestroyed()) return;
+  const display = screen.getDisplayNearestPoint({ x: Math.round(point.screenX), y: Math.round(point.screenY) });
+  const area = display.workArea;
+  const x = clamp(Math.round(point.screenX - motion.dragOffset.x), area.x, area.x + area.width - WINDOW_WIDTH);
+  const y = clamp(Math.round(point.screenY - motion.dragOffset.y), area.y, area.y + area.height - WINDOW_HEIGHT);
+  win.setPosition(x, y, false);
+});
+ipcMain.on("pet:drag-end", () => {
+  if (!motion.dragging) return;
+  motion.dragging = false;
+  motion.dragOffset = null;
+  motion.pausedUntil = Date.now() + 900;
+  motion.nextDecisionAt = motion.pausedUntil + idleDelay();
+  setMotionMode("idle");
+});
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -186,7 +338,7 @@ if (!app.requestSingleInstanceLock()) {
     startLocalServer();
     client = new CodexClient();
     client.on("state", (value) => {
-      state = { ...state, ...value };
+      state = { ...state, ...value, motion: state.motion };
       broadcast();
     });
     client.on("offline", () => {
@@ -197,11 +349,8 @@ if (!app.requestSingleInstanceLock()) {
   });
 }
 
-ipcMain.handle("pet:get-state", () => state);
-ipcMain.handle("pet:refresh-usage", () => { client?.refresh(); return true; });
-
 app.on("before-quit", () => {
-  clearInterval(walkTimer);
+  clearInterval(motionTimer);
   clearTimeout(idleTimer);
   server?.close();
   client?.stop();
