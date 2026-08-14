@@ -1,0 +1,20 @@
+{
+  "name": "banmeng-pets",
+  "interface": {
+    "displayName": "BANMENG Desktop Pets"
+  },
+  "plugins": [
+    {
+      "name": "banmeng-codex-pet",
+      "source": {
+        "source": "local",
+        "path": "./plugins/banmeng-codex-pet"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

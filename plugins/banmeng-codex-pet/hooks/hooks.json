@@ -1,0 +1,16 @@
+{
+  "description": "Send Codex lifecycle activity to the local BANMENG desktop pet.",
+  "hooks": {
+    "SessionStart": [{ "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/scripts/notify.cjs\"", "async": true, "timeout": 5 }] }],
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/scripts/notify.cjs\"", "async": true, "timeout": 5 }] }],
+    "PreToolUse": [{ "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/scripts/notify.cjs\"", "async": true, "timeout": 5 }] }],
+    "PermissionRequest": [{ "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/scripts/notify.cjs\"", "async": true, "timeout": 5 }] }],
+    "PostToolUse": [{ "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/scripts/notify.cjs\"", "async": true, "timeout": 5 }] }],
+    "PreCompact": [{ "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/scripts/notify.cjs\"", "async": true, "timeout": 5 }] }],
+    "PostCompact": [{ "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/scripts/notify.cjs\"", "async": true, "timeout": 5 }] }],
+    "SubagentStart": [{ "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/scripts/notify.cjs\"", "async": true, "timeout": 5 }] }],
+    "SubagentStop": [{ "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/scripts/notify.cjs\"", "async": true, "timeout": 5 }] }],
+    "Stop": [{ "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/scripts/notify.cjs\"", "timeout": 5 }] }],
+    "SessionEnd": [{ "hooks": [{ "type": "command", "command": "node \"${PLUGIN_ROOT}/scripts/notify.cjs\"", "timeout": 3 }] }]
+  }
+}

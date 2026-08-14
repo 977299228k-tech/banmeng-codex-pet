@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>BANMENG Codex Pet</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main class="pet-shell" id="petShell" data-mode="idle" data-facing="left">
+      <section class="status-panel" aria-live="polite">
+        <div class="status-copy">
+          <span class="status-kicker" id="statusKicker">CODEX · READY</span>
+          <strong id="statusTitle">待命中</strong>
+          <span id="statusDetail">随时可以开始</span>
+          <span class="task-meta" id="taskMeta">没有进行中的任务</span>
+        </div>
+        <button class="quota-ring" id="quotaRing" type="button" title="刷新额度">
+          <span class="quota-value" id="quotaValue">--</span>
+          <span class="quota-label">剩余</span>
+        </button>
+        <div class="quota-detail">
+          <span id="resetTime">正在连接额度</span>
+          <span id="usageSummary">ChatGPT</span>
+        </div>
+      </section>
+      <div class="character-wrap">
+        <div class="activity-mark" aria-hidden="true"><i></i><i></i><i></i></div>
+        <img class="character" src="../assets/codex-pet.png" alt="白发 Codex 桌宠" draggable="false" />
+        <div class="ground-shadow" aria-hidden="true"></div>
+      </div>
+    </main>
+    <script src="renderer.js"></script>
+  </body>
+</html>

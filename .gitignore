@@ -1,0 +1,5 @@
+node_modules/
+.banmeng-install.lock
+npm-debug.log*
+plugins/banmeng-codex-pet/assets/codex-pet-chroma.png
+plugins/banmeng-codex-pet/tests/runtime-snapshot.png

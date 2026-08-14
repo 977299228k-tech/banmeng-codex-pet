@@ -1,0 +1,35 @@
+{
+  "name": "banmeng-codex-pet",
+  "version": "0.1.0",
+  "description": "White-haired Codex desktop pet with live quota and task activity.",
+  "author": {
+    "name": "BANMENG"
+  },
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "desktop-pet",
+    "quota",
+    "task-status"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "BANMENG Codex Pet",
+    "shortDescription": "\u684c\u9762\u663e\u793a Codex \u989d\u5ea6\u548c\u4efb\u52a1\u72b6\u6001",
+    "longDescription": "\u767d\u53d1 Codex \u684c\u5ba0\uff0c\u53ef\u663e\u793a\u771f\u5b9e\u5269\u4f59\u989d\u5ea6\u3001\u91cd\u7f6e\u65f6\u95f4\u3001\u5f53\u524d\u4efb\u52a1\u9636\u6bb5\u3001\u5de5\u5177\u6267\u884c\u548c\u5b8c\u6210\u72b6\u6001\u3002",
+    "developerName": "BANMENG",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read"
+    ],
+    "defaultPrompt": [
+      "\u542f\u52a8 BANMENG Codex \u684c\u5ba0",
+      "\u5237\u65b0\u684c\u5ba0\u7684\u989d\u5ea6\u4fe1\u606f",
+      "\u5173\u95ed BANMENG Codex \u684c\u5ba0"
+    ],
+    "brandColor": "#3478F6",
+    "composerIcon": "./assets/codex-pet.png",
+    "logo": "./assets/codex-pet.png"
+  }
+}
