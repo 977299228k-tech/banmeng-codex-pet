@@ -16,7 +16,7 @@ test("plugin hooks resolve scripts from the installed plugin root", () => {
 test("plugin manifest and required assets are publishable", () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root, ".codex-plugin", "plugin.json"), "utf8"));
   assert.equal(manifest.name, "banmeng-codex-pet");
-  assert.equal(manifest.version, "0.3.2");
+  assert.equal(manifest.version, "0.3.3");
   assert.ok(fs.existsSync(path.join(root, "app", "motion.cjs")));
   assert.ok(fs.existsSync(path.join(root, "app", "life.cjs")));
   assert.ok(fs.existsSync(path.join(root, "app", "local-api.cjs")));

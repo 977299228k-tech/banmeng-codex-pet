@@ -6,6 +6,11 @@ function idleDelay(random = Math.random) {
   return 2_400 + Math.floor(random() * 4_800);
 }
 
+function contentSizeNeedsCorrection(width, height, targetWidth, targetHeight, tolerance = 4) {
+  return Math.abs(Number(width) - targetWidth) > tolerance
+    || Math.abs(Number(height) - targetHeight) > tolerance;
+}
+
 function createWalkDecision({ x, minX, maxX }, random = Math.random) {
   const left = Math.min(minX, maxX);
   const right = Math.max(minX, maxX);
@@ -35,4 +40,4 @@ function advanceWalk({ x, targetX, speed, deltaMs }) {
   return { x: x + Math.sign(distance) * step, reached: false };
 }
 
-module.exports = { advanceWalk, clamp, createWalkDecision, idleDelay };
+module.exports = { advanceWalk, clamp, contentSizeNeedsCorrection, createWalkDecision, idleDelay };

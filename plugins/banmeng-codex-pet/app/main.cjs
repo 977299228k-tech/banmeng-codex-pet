@@ -14,7 +14,7 @@ const {
   normalizeLife,
   performAutonomousAction
 } = require("./life.cjs");
-const { advanceWalk, clamp, createWalkDecision, idleDelay } = require("./motion.cjs");
+const { advanceWalk, clamp, contentSizeNeedsCorrection, createWalkDecision, idleDelay } = require("./motion.cjs");
 const { mapHookEvent } = require("./state.cjs");
 const packageInfo = require("../package.json");
 
@@ -27,6 +27,8 @@ let client;
 let motionTimer;
 let lifeTimer;
 let idleTimer;
+let sizeCorrectionTimer;
+let correctingWindowSize = false;
 let lifeStatePath;
 let nextAutonomyAt = Date.now() + 15_000;
 let state = {
@@ -339,6 +341,25 @@ function placeWindow(display = screen.getPrimaryDisplay()) {
   win.setPosition(area.x + area.width - width - 20, area.y + area.height - height, false);
 }
 
+function enforceWindowSize() {
+  if (!win || win.isDestroyed() || correctingWindowSize) return;
+  const [width, height] = win.getContentSize();
+  if (!contentSizeNeedsCorrection(width, height, WINDOW_WIDTH, WINDOW_HEIGHT)) return;
+
+  correctingWindowSize = true;
+  const bounds = win.getBounds();
+  const area = screen.getDisplayMatching(bounds).workArea;
+  win.setContentSize(WINDOW_WIDTH, WINDOW_HEIGHT, false);
+  const [correctedWidth, correctedHeight] = win.getSize();
+  win.setPosition(
+    Math.round(clamp(bounds.x, area.x, area.x + area.width - correctedWidth)),
+    Math.round(clamp(bounds.y, area.y, area.y + area.height - correctedHeight)),
+    false
+  );
+  clearTimeout(sizeCorrectionTimer);
+  sizeCorrectionTimer = setTimeout(() => { correctingWindowSize = false; }, 100);
+}
+
 function revealWindow(reposition = false) {
   if (!win || win.isDestroyed()) return false;
   pauseMotion(8_000);
@@ -423,7 +444,9 @@ function createWindow() {
   win.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   win.setAlwaysOnTop(true, "floating");
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  win.on("resize", enforceWindowSize);
   win.once("ready-to-show", () => {
+    enforceWindowSize();
     placeWindow();
     win.showInactive();
     publishMotion(true);
@@ -509,6 +532,7 @@ if (!app.requestSingleInstanceLock()) {
 app.on("before-quit", () => {
   clearInterval(motionTimer);
   clearInterval(lifeTimer);
+  clearTimeout(sizeCorrectionTimer);
   clearTimeout(idleTimer);
   saveLifeState();
   server?.close();
