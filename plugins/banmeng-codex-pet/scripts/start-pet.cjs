@@ -2,6 +2,7 @@ const { spawn } = require("node:child_process");
 const path = require("node:path");
 const fs = require("node:fs");
 const { isPetHealth, petHealthKind, requestPet } = require("./pet-http.cjs");
+const packageInfo = require("../package.json");
 
 const root = path.resolve(__dirname, "..");
 const electronRoot = path.join(root, "node_modules", "electron");
@@ -13,9 +14,14 @@ function delay(milliseconds) {
 
 function findElectronExecutable() {
   try {
+    const expectedVersion = String(packageInfo.dependencies.electron);
+    const installedPackage = JSON.parse(fs.readFileSync(path.join(electronRoot, "package.json"), "utf8"));
     const relativePath = fs.readFileSync(path.join(electronRoot, "path.txt"), "utf8").trim();
     const executable = path.join(electronRoot, "dist", relativePath);
-    return fs.existsSync(executable) ? executable : null;
+    const runtimeVersion = fs.readFileSync(path.join(electronRoot, "dist", "version"), "utf8").trim().replace(/^v/, "");
+    return installedPackage.version === expectedVersion && runtimeVersion === expectedVersion && fs.existsSync(executable)
+      ? executable
+      : null;
   } catch {
     return null;
   }
@@ -77,11 +83,11 @@ async function ensureDependencies() {
 (async () => {
   const existing = await requestPet("/health");
   const existingKind = petHealthKind(existing);
-  if (existingKind === "current") {
+  if (existingKind === "current" && existing.data.version === packageInfo.version) {
     await requestPet("/show", "POST");
     process.exit(0);
   }
-  if (existingKind === "legacy") {
+  if (existingKind === "legacy" || existingKind === "current") {
     await requestPet("/quit", "POST");
     let stopped = false;
     for (let attempt = 0; attempt < 20; attempt += 1) {

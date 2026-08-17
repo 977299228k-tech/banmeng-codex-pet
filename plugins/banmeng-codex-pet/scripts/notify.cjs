@@ -1,6 +1,7 @@
 const { spawn } = require("node:child_process");
 const path = require("node:path");
 const { petHealthKind, requestPet } = require("./pet-http.cjs");
+const packageInfo = require("../package.json");
 
 let input = "";
 process.stdin.setEncoding("utf8");
@@ -25,7 +26,7 @@ process.stdin.on("end", async () => {
 
 function post(payload) {
   return requestPet("/health").then((health) => {
-    if (petHealthKind(health) !== "current") return false;
+    if (petHealthKind(health) !== "current" || health.data.version !== packageInfo.version) return false;
     return requestPet("/event", "POST", payload).then((result) => result.ok);
   });
 }
