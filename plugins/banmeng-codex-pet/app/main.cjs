@@ -3,6 +3,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const http = require("node:http");
 const { CodexClient } = require("./codex-client.cjs");
+const { APP_ID, isTrustedLocalRequest, publicStateSnapshot, readJsonBody } = require("./local-api.cjs");
+const { readJsonWithBackup, writeJsonAtomic } = require("./persistence.cjs");
 const {
   advanceLife,
   applyCareAction,
@@ -92,8 +94,8 @@ function loadLifeState() {
   lifeStatePath = path.join(directory, "life-state.json");
   try {
     fs.mkdirSync(directory, { recursive: true });
-    const saved = JSON.parse(fs.readFileSync(lifeStatePath, "utf8"));
-    state.life = advanceLife(saved, Date.now());
+    const saved = readJsonWithBackup(lifeStatePath);
+    state.life = saved ? advanceLife(saved, Date.now()) : normalizeLife({}, Date.now());
   } catch {
     state.life = normalizeLife({}, Date.now());
   }
@@ -102,11 +104,16 @@ function loadLifeState() {
 function saveLifeState() {
   if (!lifeStatePath || !state.life) return;
   try {
-    fs.writeFileSync(lifeStatePath, JSON.stringify(state.life, null, 2), "utf8");
+    writeJsonAtomic(lifeStatePath, state.life);
   } catch {}
 }
 
 function performCare(action) {
+  if (!new Set(["feed", "play", "rest"]).has(action)) {
+    const error = new Error("Unsupported care action");
+    error.statusCode = 400;
+    throw error;
+  }
   const now = Date.now();
   const result = applyCareAction(state.life, action, now);
   state.life = result.life;
@@ -153,7 +160,8 @@ function applyTaskEvent(payload) {
     ...previous,
     ...next,
     toolCount: next.resetTask ? 0 : previous.toolCount + (next.incrementTool ? 1 : 0),
-    startedAt: next.resetTask ? Date.now() : previous.startedAt,
+    startedAt: next.clearTiming ? null : next.resetTask ? Date.now() : previous.startedAt,
+    finishedAt: next.clearTiming || next.resetTask ? null : previous.finishedAt,
     updatedAt: Date.now()
   };
   if (next.finishTask) state.task.finishedAt = Date.now();
@@ -168,21 +176,12 @@ function applyTaskEvent(payload) {
   broadcast();
 }
 
-function readBody(request) {
-  return new Promise((resolve, reject) => {
-    let body = "";
-    request.on("data", (chunk) => {
-      body += chunk;
-      if (body.length > 1_000_000) request.destroy();
-    });
-    request.on("end", () => {
-      try { resolve(body ? JSON.parse(body) : {}); } catch (error) { reject(error); }
-    });
-    request.on("error", reject);
-  });
-}
-
 function triggerInteraction(kind = "pet") {
+  if (!new Set(["pet", "double"]).has(kind)) {
+    const error = new Error("Unsupported interaction");
+    error.statusCode = 400;
+    throw error;
+  }
   const phrases = kind === "double"
     ? ["呀，被发现啦！", "今天也一起加油吧！", "跳一下，灵感就来了！"]
     : ["嗯？我在这里。", "摸摸收到。", "要开始新任务吗？", "休息一下也很好。"];
@@ -196,15 +195,21 @@ function triggerInteraction(kind = "pet") {
   return { kind, text };
 }
 
-function startLocalServer() {
-  server = http.createServer(async (request, response) => {
+async function handleLocalRequest(request, response) {
+    response.setHeader("Cache-Control", "no-store");
+    response.setHeader("X-Content-Type-Options", "nosniff");
     response.setHeader("Content-Type", "application/json; charset=utf-8");
+    if (!isTrustedLocalRequest(request, PORT)) {
+      response.statusCode = 403;
+      response.end(JSON.stringify({ ok: false, error: "Forbidden" }));
+      return;
+    }
     if (request.method === "GET" && request.url === "/health") {
-      response.end(JSON.stringify({ ok: true, version: packageInfo.version }));
+      response.end(JSON.stringify({ ok: true, app: APP_ID, version: packageInfo.version }));
       return;
     }
     if (request.method === "GET" && request.url === "/state") {
-      response.end(JSON.stringify(state));
+      response.end(JSON.stringify(publicStateSnapshot(state)));
       return;
     }
     if (request.method === "GET" && request.url === "/snapshot") {
@@ -234,7 +239,15 @@ function startLocalServer() {
         const shell = document.querySelector('.pet-shell');
         return {
           readyState: document.readyState,
-          text: document.body.innerText,
+          viewport: {
+            innerWidth: window.innerWidth,
+            innerHeight: window.innerHeight,
+            outerWidth: window.outerWidth,
+            outerHeight: window.outerHeight,
+            devicePixelRatio: window.devicePixelRatio,
+            visualWidth: window.visualViewport?.width,
+            visualHeight: window.visualViewport?.height
+          },
           shell: rect('.pet-shell'),
           panel: rect('.status-panel'),
           characterWrap: rect('.character-wrap'),
@@ -247,36 +260,42 @@ function startLocalServer() {
       response.end(JSON.stringify({
         ...diagnostics,
         windowBounds: win.getBounds(),
+        contentBounds: win.getContentBounds(),
+        zoomFactor: win.webContents.getZoomFactor(),
         motion: { ...state.motion, targetX: motion.targetX, speed: motion.speed }
       }));
       return;
     }
     if (request.method === "POST" && request.url === "/event") {
       try {
-        applyTaskEvent(await readBody(request));
+        const payload = await readJsonBody(request);
+        if (!payload || typeof payload !== "object" || typeof payload.hook_event_name !== "string") {
+          throw Object.assign(new Error("Invalid hook event"), { statusCode: 400 });
+        }
+        applyTaskEvent(payload);
         response.end(JSON.stringify({ ok: true }));
       } catch (error) {
-        response.statusCode = 400;
+        response.statusCode = error.statusCode || 400;
         response.end(JSON.stringify({ ok: false, error: error.message }));
       }
       return;
     }
     if (request.method === "POST" && request.url === "/interact") {
       try {
-        const result = triggerInteraction((await readBody(request)).kind);
+        const result = triggerInteraction((await readJsonBody(request)).kind);
         win?.webContents.send("pet:reaction", result);
         response.end(JSON.stringify({ ok: true, ...result }));
       } catch (error) {
-        response.statusCode = 400;
+        response.statusCode = error.statusCode || 400;
         response.end(JSON.stringify({ ok: false, error: error.message }));
       }
       return;
     }
     if (request.method === "POST" && request.url === "/care") {
       try {
-        response.end(JSON.stringify(performCare((await readBody(request)).action)));
+        response.end(JSON.stringify(performCare((await readJsonBody(request)).action)));
       } catch (error) {
-        response.statusCode = 400;
+        response.statusCode = error.statusCode || 400;
         response.end(JSON.stringify({ ok: false, error: error.message }));
       }
       return;
@@ -297,13 +316,27 @@ function startLocalServer() {
     }
     response.statusCode = 404;
     response.end(JSON.stringify({ ok: false }));
+}
+
+function startLocalServer() {
+  server = http.createServer((request, response) => {
+    handleLocalRequest(request, response).catch((error) => {
+      if (response.headersSent || response.writableEnded) return;
+      response.statusCode = error.statusCode || 500;
+      response.end(JSON.stringify({ ok: false, error: "Local API request failed" }));
+    });
+  });
+  server.on("error", (error) => {
+    console.error(`BANMENG local server failed: ${error.message}`);
+    app.quit();
   });
   server.listen(PORT, "127.0.0.1");
 }
 
 function placeWindow(display = screen.getPrimaryDisplay()) {
   const area = display.workArea;
-  win.setPosition(area.x + area.width - WINDOW_WIDTH - 20, area.y + area.height - WINDOW_HEIGHT, false);
+  const [width, height] = win.getSize();
+  win.setPosition(area.x + area.width - width - 20, area.y + area.height - height, false);
 }
 
 function revealWindow(reposition = false) {
@@ -368,6 +401,7 @@ function createWindow() {
   win = new BrowserWindow({
     width: WINDOW_WIDTH,
     height: WINDOW_HEIGHT,
+    useContentSize: true,
     show: false,
     transparent: true,
     frame: false,
@@ -380,9 +414,13 @@ function createWindow() {
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      sandbox: true
     }
   });
+  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  win.webContents.on("will-navigate", (event) => event.preventDefault());
+  win.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
   win.setAlwaysOnTop(true, "floating");
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   win.once("ready-to-show", () => {
@@ -432,8 +470,9 @@ ipcMain.on("pet:drag-move", (_event, point) => {
   if (!motion.dragging || !motion.dragOffset || !validPoint(point) || !win || win.isDestroyed()) return;
   const display = screen.getDisplayNearestPoint({ x: Math.round(point.screenX), y: Math.round(point.screenY) });
   const area = display.workArea;
-  const x = clamp(Math.round(point.screenX - motion.dragOffset.x), area.x, area.x + area.width - WINDOW_WIDTH);
-  const y = clamp(Math.round(point.screenY - motion.dragOffset.y), area.y, area.y + area.height - WINDOW_HEIGHT);
+  const [width, height] = win.getSize();
+  const x = clamp(Math.round(point.screenX - motion.dragOffset.x), area.x, area.x + area.width - width);
+  const y = clamp(Math.round(point.screenY - motion.dragOffset.y), area.y, area.y + area.height - height);
   win.setPosition(x, y, false);
 });
 ipcMain.on("pet:drag-end", () => {

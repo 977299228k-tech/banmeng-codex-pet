@@ -6,7 +6,7 @@
 
 ## 一键安装
 
-前置条件：Windows 10/11、Node.js 20 或更高版本，以及已经登录的 Codex Desktop 或 Codex CLI。
+前置条件：Windows 10/11、Node.js 22.12 或更高版本，以及已经登录的 Codex Desktop 或 Codex CLI。
 
 ```powershell
 codex plugin marketplace add 977299228k-tech/banmeng-codex-pet
@@ -28,7 +28,8 @@ codex plugin add banmeng-codex-pet@banmeng-pets
 - 优先读取可选的 `CODEX_BIN`，随后查找 npm 全局 Codex 和系统中的 `codex.exe`。
 - 通过本机 `codex app-server --stdio` 读取 `account/rateLimits/read` 与 `account/usage/read`。
 - 使用当前用户已有的 Codex 登录；不会读取、复制或保存账户令牌。
-- 运行时仅监听 `127.0.0.1:47831`，用于桌宠 Hooks 和本地状态刷新。
+- 运行时仅监听 `127.0.0.1:47831`，拒绝网页跨站控制；公开状态会移除邮箱、任务原文和会话标识。
+- 生活状态采用原子写入和本地备份，插件升级或意外中断不会轻易丢失亲密度。
 
 ## 本地开发
 

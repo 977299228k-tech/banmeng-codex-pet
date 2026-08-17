@@ -2,7 +2,8 @@ const { EventEmitter } = require("node:events");
 const { execFileSync, spawn } = require("node:child_process");
 const path = require("node:path");
 const fs = require("node:fs");
-const { quotaSnapshot } = require("./state.cjs");
+const packageInfo = require("../package.json");
+const { accountSnapshot, quotaSnapshot, usageSnapshot } = require("./state.cjs");
 
 function findNativeCodex(appData) {
   if (process.platform !== "win32") return null;
@@ -73,32 +74,53 @@ class CodexClient extends EventEmitter {
       stdio: ["pipe", "pipe", "pipe"]
     });
 
-    this.child.stdout.on("data", (chunk) => this.consume(chunk));
-    this.child.stderr.on("data", (chunk) => this.emit("debug", chunk.toString("utf8")));
-    this.child.on("error", (error) => this.emit("error", error));
-    this.child.on("exit", () => {
-      this.child = null;
+    const child = this.child;
+    let finished = false;
+    const handleExit = () => {
+      if (finished) return;
+      finished = true;
+      if (this.child === child) this.child = null;
       clearInterval(this.pollTimer);
       this.emit("offline");
       if (!this.stopping) this.reconnectTimer = setTimeout(() => this.start(), 2_000);
+    };
+
+    child.stdout.on("data", (chunk) => this.consume(chunk));
+    child.stderr.on("data", (chunk) => this.emit("debug", chunk.toString("utf8")));
+    child.stdin.on("error", (error) => this.emit("debug", error.message));
+    child.on("error", (error) => {
+      this.quota = { connected: false, error: "无法启动 Codex App Server" };
+      this.emit("debug", error.message);
+      this.emitState();
+      handleExit();
     });
+    child.on("exit", handleExit);
 
     this.send({
       method: "initialize",
       id: 0,
       params: {
-        clientInfo: { name: "banmeng_codex_pet", title: "BANMENG Codex Pet", version: "0.3.0" },
+        clientInfo: { name: "banmeng_codex_pet", title: "BANMENG Codex Pet", version: packageInfo.version },
         capabilities: { experimentalApi: true }
       }
     });
   }
 
   send(message) {
-    if (this.child?.stdin.writable) this.child.stdin.write(`${JSON.stringify(message)}\n`);
+    try {
+      if (this.child?.stdin.writable) this.child.stdin.write(`${JSON.stringify(message)}\n`);
+    } catch (error) {
+      this.emit("debug", error.message);
+    }
   }
 
   consume(chunk) {
     this.buffer += chunk.toString("utf8");
+    if (this.buffer.length > 1_000_000) {
+      this.buffer = "";
+      this.emit("debug", "Codex App Server response exceeded the buffer limit");
+      return;
+    }
     const lines = this.buffer.split(/\r?\n/);
     this.buffer = lines.pop() || "";
     for (const line of lines) {
@@ -119,7 +141,7 @@ class CodexClient extends EventEmitter {
       return;
     }
     if (message.id === 1) {
-      this.account = message.result?.account || null;
+      this.account = accountSnapshot(message.result?.account);
       this.emitState();
       return;
     }
@@ -129,7 +151,7 @@ class CodexClient extends EventEmitter {
       return;
     }
     if (message.id === 3) {
-      this.usage = message.result || null;
+      this.usage = message.error ? null : usageSnapshot(message.result);
       this.emitState();
       return;
     }

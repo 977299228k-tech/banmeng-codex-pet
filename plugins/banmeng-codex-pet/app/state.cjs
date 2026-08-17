@@ -26,7 +26,7 @@ function mapHookEvent(payload = {}) {
   const event = payload.hook_event_name || "Unknown";
   const base = { event, sessionId: payload.session_id || null, turnId: payload.turn_id || null };
 
-  if (event === "SessionStart") return { ...base, mode: "idle", title: "已经上线", detail: "随时可以开始" };
+  if (event === "SessionStart") return { ...base, mode: "idle", title: "已经上线", detail: "随时可以开始", resetTask: true, clearTiming: true };
   if (event === "UserPromptSubmit") return { ...base, mode: "running", title: "正在理解任务", detail: truncate(payload.prompt) || "读取你的要求", resetTask: true };
   if (event === "PreToolUse") {
     const [title, detail] = toolCopy(payload.tool_name);
@@ -66,4 +66,33 @@ function quotaSnapshot(result = {}) {
   };
 }
 
-module.exports = { mapHookEvent, quotaSnapshot, toolCopy, truncate };
+function accountSnapshot(account) {
+  if (!account || typeof account !== "object") return null;
+  return {
+    type: account.type || null,
+    planType: account.planType || null
+  };
+}
+
+function usageSnapshot(result) {
+  if (!result || typeof result !== "object") return null;
+  const summary = result.summary || {};
+  const number = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
+  return {
+    summary: {
+      lifetimeTokens: number(summary.lifetimeTokens),
+      peakDailyTokens: number(summary.peakDailyTokens),
+      longestRunningTurnSec: number(summary.longestRunningTurnSec),
+      currentStreakDays: number(summary.currentStreakDays),
+      longestStreakDays: number(summary.longestStreakDays)
+    },
+    dailyUsageBuckets: Array.isArray(result.dailyUsageBuckets)
+      ? result.dailyUsageBuckets.slice(-90).map((bucket) => ({
+          startDate: String(bucket?.startDate || ""),
+          tokens: number(bucket?.tokens) || 0
+        }))
+      : []
+  };
+}
+
+module.exports = { accountSnapshot, mapHookEvent, quotaSnapshot, toolCopy, truncate, usageSnapshot };

@@ -76,7 +76,7 @@ function render(state) {
     resetTime.textContent = quota.error || "正在连接额度";
   }
   const plan = state.account?.planType || quota.planType || "ChatGPT";
-  usageSummary.textContent = summary.lifetimeTokens ? `${plan} · ${compactNumber(summary.lifetimeTokens)} tokens` : plan;
+  usageSummary.textContent = summary.lifetimeTokens != null ? `${plan} · ${compactNumber(summary.lifetimeTokens)} tokens` : plan;
 
   const satiety = Math.round(Number(life.satiety) || 0);
   const mood = Math.round(Number(life.mood) || 0);
@@ -109,13 +109,21 @@ function screenPoint(event) {
 }
 
 async function react(kind) {
-  showReaction(await window.petApi.interact(kind));
+  try {
+    showReaction(await window.petApi.interact(kind));
+  } catch {
+    showReaction({ kind: "attention", text: "互动暂时没有响应。" });
+  }
 }
 
 async function care(action) {
-  const result = await window.petApi.care(action);
-  if (result?.life && latestState) render({ ...latestState, life: result.life });
-  showReaction(result);
+  try {
+    const result = await window.petApi.care(action);
+    if (result?.life && latestState) render({ ...latestState, life: result.life });
+    showReaction(result);
+  } catch {
+    showReaction({ kind: "attention", text: "现在还不能这样做。" });
+  }
 }
 
 quotaRing.addEventListener("click", () => window.petApi.refreshUsage());
@@ -160,7 +168,13 @@ function finishPointer(event) {
 }
 
 characterWrap.addEventListener("pointerup", finishPointer);
-characterWrap.addEventListener("pointercancel", finishPointer);
+characterWrap.addEventListener("pointercancel", (event) => {
+  if (!pointerStart || pointerStart.pointerId !== event.pointerId) return;
+  pointerStart = null;
+  dragged = false;
+  window.petApi.endDrag();
+  window.petApi.setHovered(false);
+});
 characterWrap.addEventListener("dblclick", () => {
   clearTimeout(clickTimer);
   react("double");
